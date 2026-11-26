@@ -31,7 +31,7 @@ html, body, #viewDiv { margin:0; height:100%; width:100%; background:#0b1f2e; }
 #tip .txt { font:600 17px/1.25 "Segoe UI", Arial, sans-serif; margin-top:4px; color:#111;
             display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
 
-/* Белая плашка: выезжает из-под фото (вариант 1) */
+/* Белая плашка: выезжает из-под фото */
 #tip .plaque { box-sizing:border-box; position:relative; z-index:1;
                width:var(--pw); height:var(--s);
                margin-left:calc(var(--s) / -2);
@@ -57,9 +57,13 @@ const SIZE = 128;      // сторона фото, px
 const PLAQUE_W = 360;  // расстояние от центра фото до дальнего края плашки, px
 const BORDER = 4;      // толщина белой рамки у фото, px
 const RADIUS = 0.4;    // скругление фото (доля от стороны)
-const GAP = 6;         // зазор между фото и подписью страны, px
-const SIDE = 30;       // запас по бокам картинки маркера под длинные подписи, px
-const VPAD = 40;       // запас сверху и снизу картинки маркера, px
+
+/* Подпись под фото (две буквы без фона) */
+const LABEL_SIZE = 14;     // размер букв, px
+const LABEL_WEIGHT = 500;  // толщина: 400 тонко, 500 средне, 700 жирно
+const GAP = 4;             // зазор между фото и подписью, px
+const SIDE = 10;           // боковой запас картинки маркера, px
+const VPAD = 28;           // запас сверху и снизу картинки маркера, px
 
 /* Границы зума: высота камеры над землёй, метры */
 const MAX_Z = 6500000; // самое далёкое положение
@@ -70,10 +74,10 @@ const MIN_Z = 2200000; // самое близкое (меньше число = �
    dx — сдвиг по экрану в px (разводит Нидерланды и UK),
    img — файл фото рядом с index.html, url — страница проекта */
 const PLACES = [
-  { name: "REEDS4ALL in Rhine-IJssel Delta (Netherlands)", label: "Netherlands",    lon: 5.92,  lat: 52.56, dx:  45, img: "NL.png", url: "https://example.com/story" },
-  { name: "Peat extraction site in Sonkajärvi (Finland)",  label: "Finland",        lon: 27.52, lat: 63.67, dx:   0, img: "FI.png", url: "https://example.com/story" },
-  { name: "Kuwasy pilot site in Biebrza (Poland)",         label: "Poland",         lon: 22.73, lat: 53.46, dx:   0, img: "PL.png", url: "https://example.com/story" },
-  { name: "Great Fen (United Kingdom)",                    label: "United Kingdom", lon: -0.23, lat: 52.43, dx: -45, img: "UK.png", url: "https://example.com/story" }
+  { name: "REEDS4ALL in Rhine-IJssel Delta (Netherlands)", label: "NL", lon: 5.92,  lat: 52.56, dx:  45, img: "NL.png", url: "https://example.com/story" },
+  { name: "Peat extraction site in Sonkajärvi (Finland)",  label: "FI", lon: 27.52, lat: 63.67, dx:   0, img: "FI.png", url: "https://example.com/story" },
+  { name: "Kuwasy pilot site in Biebrza (Poland)",         label: "PL", lon: 22.73, lat: 53.46, dx:   0, img: "PL.png", url: "https://example.com/story" },
+  { name: "Great Fen (United Kingdom)",                    label: "UK", lon: -0.23, lat: 52.43, dx: -45, img: "UK.png", url: "https://example.com/story" }
 ];
 
 /* Передаём размеры из JS в CSS */
@@ -93,7 +97,7 @@ function roundRectPath(g, x, y, w, h, r) {
 
 /* Делает из файла две картинки:
    photo — скруглённое фото с белой рамкой (для плашки при наведении);
-   marker — то же фото с подписью страны под ним (для глобуса) */
+   marker — то же фото с подписью под ним (для глобуса) */
 function makeSquare(src, label) {
   return new Promise((resolve, reject) => {
     const im = new Image();
@@ -120,18 +124,19 @@ function makeSquare(src, label) {
       const k = mk.getContext("2d");
       k.drawImage(c, SIDE * 2, VPAD * 2, px, px);
 
-      /* 3. Подпись: белая таблетка со скруглением 40% и чёрным текстом */
-      k.font = '700 26px "Segoe UI", Arial, sans-serif';
-      const tw = k.measureText(label).width;
-      const pw = Math.min(tw + 40, W - 4), ph = 52;
-      const x = (W - pw) / 2, y = (VPAD + SIZE + GAP) * 2;
-      k.save();
-      k.shadowColor = "rgba(0,0,0,.3)"; k.shadowBlur = 8; k.shadowOffsetY = 2;
-      roundRectPath(k, x, y, pw, ph, ph * 0.4);
-      k.fillStyle = "#fff"; k.fill();
-      k.restore();
-      k.fillStyle = "#111"; k.textAlign = "center"; k.textBaseline = "middle";
-      k.fillText(label, W / 2, y + ph / 2 + 1);
+      /* 3. Подпись без фона: светлые буквы с тонкой тёмной обводкой,
+            выровнены по правому краю фото */
+      k.font = LABEL_WEIGHT + " " + (LABEL_SIZE * 2) + 'px "Segoe UI", Arial, sans-serif';
+      if ("letterSpacing" in k) k.letterSpacing = "2px";
+      k.textAlign = "right";
+      k.textBaseline = "middle";
+      k.lineJoin = "round";
+      const tx = (SIDE + SIZE) * 2 - 6;                          // правый край фото
+      const ty = (VPAD + SIZE + GAP) * 2 + LABEL_SIZE;            // середина строки под фото
+      k.strokeStyle = "rgba(11, 31, 46, 0.75)"; k.lineWidth = 6;
+      k.strokeText(label, tx, ty);
+      k.fillStyle = "#fff";
+      k.fillText(label, tx, ty);
 
       resolve({ photo: photo, marker: mk.toDataURL("image/png") });
     };
