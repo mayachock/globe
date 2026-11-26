@@ -3,40 +3,68 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Globe</title>
+<title>Conservation sites</title>
 <link rel="stylesheet" href="https://js.arcgis.com/4.31/esri/themes/dark/main.css">
 <script src="https://js.arcgis.com/4.31/"></script>
 <style>
   html, body, #viewDiv { margin:0; height:100%; width:100%; background:#0b1f2e; }
-  #log { position:fixed; top:0; left:0; z-index:99; margin:0; padding:8px;
-         color:#fff; background:rgba(150,0,0,.85); font:13px monospace; white-space:pre-wrap; max-width:95%; }
+  #tip { position:fixed; display:none; pointer-events:none; z-index:99;
+         background:rgba(0,0,0,.8); color:#fff; padding:6px 10px; border-radius:6px;
+         font:14px sans-serif; transform:translate(14px,-34px); }
 </style>
 </head>
 <body>
 <div id="viewDiv"></div>
-<pre id="log">1: html loaded</pre>
+<div id="tip"></div>
 
 <script>
-const log = (t) => { document.getElementById("log").textContent += "\n" + t; };
-window.addEventListener("error", (e) => log("JS ERROR: " + e.message));
-window.addEventListener("unhandledrejection", (e) => log("PROMISE ERROR: " + (e.reason && e.reason.message || e.reason)));
-log("2: typeof require = " + typeof require);
+const PLACES = [
+  { name: "REEDS4ALL in Rhine-IJssel Delta (Netherlands)", lon: 5.92,  lat: 52.56, img: "NL.png", url: "https://example.com/story" },
+  { name: "Peat extraction site in Sonkajärvi (Finland)",  lon: 27.52, lat: 63.67, img: "FI.png", url: "https://example.com/story" },
+  { name: "Kuwasy pilot site in Biebrza (Poland)",         lon: 22.73, lat: 53.46, img: "PL.png", url: "https://example.com/story" },
+  { name: "Great Fen (United Kingdom)",                    lon: -0.23, lat: 52.43, img: "UK.png", url: "https://example.com/story" }
+];
 
-require(["esri/Map", "esri/views/SceneView"], function (Map, SceneView) {
-  log("3: modules loaded");
+require(["esri/Map", "esri/views/SceneView", "esri/Graphic", "esri/layers/GraphicsLayer"],
+function (Map, SceneView, Graphic, GraphicsLayer) {
+  const layer = new GraphicsLayer();
   const view = new SceneView({
     container: "viewDiv",
-    map: new Map({ basemap: "osm" }),
+    map: new Map({ basemap: "osm", layers: [layer] }),
     viewingMode: "global",
-    camera: { position: { longitude: 14, latitude: 50, z: 5500000 } }
+    camera: { position: { longitude: 15, latitude: 52, z: 6500000 }, tilt: 0 }
   });
-  log("4: view created");
-  view.when(
-    () => log("5: view ready"),
-    (e) => log("VIEW ERROR: " + (e && e.message ? e.message : e))
-  );
-}, function (err) {
-  log("REQUIRE ERROR: " + err);
+
+  PLACES.forEach(p => layer.add(new Graphic({
+    geometry: { type: "point", longitude: p.lon, latitude: p.lat },
+    attributes: { name: p.name, url: p.url },
+    symbol: { type: "picture-marker", url: p.img, width: "64px", height: "64px" }
+  })));
+
+  const tip = document.getElementById("tip");
+
+  async function hit(event) {
+    const res = await view.hitTest(event, { include: layer });
+    return res.results.length ? res.results[0].graphic : null;
+  }
+
+  view.on("pointer-move", async (e) => {
+    const g = await hit(e);
+    view.container.style.cursor = g ? "pointer" : "default";
+    if (g) {
+      tip.textContent = g.attributes.name;
+      tip.style.left = e.x + "px";
+      tip.style.top = e.y + "px";
+      tip.style.display = "block";
+    } else {
+      tip.style.display = "none";
+    }
+  });
+
+  view.on("click", async (e) => {
+    const g = await hit(e);
+    if (g) window.location.href = g.attributes.url;
+  });
 });
 </script>
 </body>
