@@ -8,106 +8,35 @@
 <script src="https://js.arcgis.com/4.31/"></script>
 <style>
   html, body, #viewDiv { margin:0; height:100%; width:100%; background:#0b1f2e; }
-  #tip {
-    position:absolute; display:none; pointer-events:none; z-index:10;
-    height:46px; box-sizing:border-box;
-    padding:0 22px 0 52px; border-radius:23px;
-    background:rgba(30,55,70,.88) var(--photo) no-repeat 0 0 / 46px 46px;
-    color:#fff; font:700 15px/46px sans-serif; white-space:nowrap;
-  }
+  #log { position:fixed; top:0; left:0; z-index:99; margin:0; padding:8px;
+         color:#fff; background:rgba(150,0,0,.85); font:13px monospace; white-space:pre-wrap; max-width:95%; }
 </style>
 </head>
 <body>
 <div id="viewDiv"></div>
-<div id="tip"></div>
+<pre id="log">1: html loaded</pre>
 
 <script>
-const PLACES = [
-  { name: "REEDS4ALL in Rhine-IJssel Delta (Netherlands)", lon: 5.92,  lat: 52.56, img: "NL.png", url: "https://example.com/story" },
-  { name: "Peat extraction site in Sonkajärvi (Finland)",  lon: 27.52, lat: 63.67, img: "FI.png", url: "https://example.com/story" },
-  { name: "Kuwasy pilot site in Biebrza (Poland)",         lon: 22.73, lat: 53.46, img: "PL.png", url: "https://example.com/story" },
-  { name: "Great Fen (United Kingdom)",                    lon: -0.23, lat: 52.43, img: "UK.png", url: "https://example.com/story" }
-];
-const SIZE = 46;
+const log = (t) => { document.getElementById("log").textContent += "\n" + t; };
+window.addEventListener("error", (e) => log("JS ERROR: " + e.message));
+window.addEventListener("unhandledrejection", (e) => log("PROMISE ERROR: " + (e.reason && e.reason.message || e.reason)));
+log("2: typeof require = " + typeof require);
 
-function circleImage(src, size) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => {
-      const c = document.createElement("canvas");
-      c.width = c.height = size * 2;
-      const g = c.getContext("2d"), r = size;
-      g.beginPath(); g.arc(r, r, r - 4, 0, Math.PI * 2); g.closePath();
-      g.save(); g.clip();
-      const s = Math.min(img.width, img.height);
-      g.drawImage(img, (img.width - s) / 2, (img.height - s) / 2, s, s, 4, 4, size * 2 - 8, size * 2 - 8);
-      g.restore();
-      g.lineWidth = 4; g.strokeStyle = "#fff";
-      g.beginPath(); g.arc(r, r, r - 4, 0, Math.PI * 2); g.stroke();
-      resolve(c.toDataURL("image/png"));
-    };
-    img.onerror = () => reject(new Error("Image not found: " + src));
-    img.src = src;
-  });
-}
-
-require([
-  "esri/config", "esri/Map", "esri/views/SceneView", "esri/Graphic",
-  "esri/layers/GraphicsLayer"
-], async function (esriConfig, Map, SceneView, Graphic, GraphicsLayer) {
-
-  // esriConfig.apiKey = "YOUR_ARCGIS_API_KEY";
-
-  const layer = new GraphicsLayer();
-  const map = new Map({ basemap: "satellite", layers: [layer] });
+require(["esri/Map", "esri/views/SceneView"], function (Map, SceneView) {
+  log("3: modules loaded");
   const view = new SceneView({
     container: "viewDiv",
-    map,
+    map: new Map({ basemap: "osm" }),
     viewingMode: "global",
-    camera: { position: { longitude: 14, latitude: 50, z: 5500000 } },
-    environment: { atmosphereEnabled: true, starsEnabled: true },
-    ui: { components: [] }
+    camera: { position: { longitude: 14, latitude: 50, z: 5500000 } }
   });
-
-  for (const p of PLACES) {
-    try {
-      const href = await circleImage(p.img, SIZE);
-      layer.add(new Graphic({
-        geometry: { type: "point", longitude: p.lon, latitude: p.lat },
-        symbol: { type: "picture-marker", url: href, width: SIZE, height: SIZE },
-        attributes: { name: p.name, url: p.url }
-      }));
-    } catch (err) {
-      console.error(err);
-    }
-  }
-
-  const tip = document.getElementById("tip");
-  const hit = async (e) => {
-    const r = await view.hitTest(e, { include: layer });
-    return r.results.length ? r.results[0].graphic : null;
-  };
-
-  view.on("pointer-move", async (e) => {
-    const g = await hit(e);
-    if (g) {
-      const s = view.toScreen(g.geometry);
-      tip.textContent = g.attributes.name;
-      tip.style.setProperty("--photo", `url(${g.symbol.url})`);
-      tip.style.left = (s.x - SIZE / 2) + "px";
-      tip.style.top  = (s.y - SIZE / 2) + "px";
-      tip.style.display = "block";
-      view.container.style.cursor = "pointer";
-    } else {
-      tip.style.display = "none";
-      view.container.style.cursor = "default";
-    }
-  });
-
-  view.on("click", async (e) => {
-    const g = await hit(e);
-    if (g) window.open(g.attributes.url, "_blank");
-  });
+  log("4: view created");
+  view.when(
+    () => log("5: view ready"),
+    (e) => log("VIEW ERROR: " + (e && e.message ? e.message : e))
+  );
+}, function (err) {
+  log("REQUIRE ERROR: " + err);
 });
 </script>
 </body>
