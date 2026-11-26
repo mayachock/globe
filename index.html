@@ -53,8 +53,8 @@ html, body, #viewDiv { margin:0; height:100%; width:100%; background:#0b1f2e; }
 
 <script>
 /* ===== НАСТРОЙКИ ===== */
-const SIZE = 128;      // сторона фото, px
-const PLAQUE_W = 360;  // расстояние от центра фото до дальнего края плашки, px
+const SIZE = 100;      // сторона фото, px
+const PLAQUE_W = 200;  // расстояние от центра фото до дальнего края плашки, px
 const BORDER = 4;      // толщина белой рамки у фото, px
 const RADIUS = 0.4;    // скругление фото (доля от стороны)
 
@@ -131,11 +131,9 @@ function makeSquare(src, label) {
       k.textAlign = "right";
       k.textBaseline = "middle";
       k.lineJoin = "round";
-      const tx = (SIDE + SIZE) * 2 - 6;                          // правый край фото
+      const tx = (SIDE + SIZE) * 2 - 40;                          // правый край фото
       const ty = (VPAD + SIZE + GAP) * 2 + LABEL_SIZE;            // середина строки под фото
-      k.strokeStyle = "rgba(11, 31, 46, 0.75)"; k.lineWidth = 6;
-      k.strokeText(label, tx, ty);
-      k.fillStyle = "#fff";
+      k.fillStyle = "#000";
       k.fillText(label, tx, ty);
 
       resolve({ photo: photo, marker: mk.toDataURL("image/png") });
