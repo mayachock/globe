@@ -53,8 +53,8 @@ html, body, #viewDiv { margin:0; height:100%; width:100%; background:#0b1f2e; }
 
 <script>
 /* ===== НАСТРОЙКИ ===== */
-const SIZE = 100;      // сторона фото, px
-const PLAQUE_W = 200;  // расстояние от центра фото до дальнего края плашки, px
+const SIZE = 120;      // сторона фото, px
+const PLAQUE_W = 250;  // расстояние от центра фото до дальнего края плашки, px
 const BORDER = 4;      // толщина белой рамки у фото, px
 const RADIUS = 0.4;    // скругление фото (доля от стороны)
 
@@ -144,13 +144,23 @@ function makeSquare(src, label) {
 }
 
 /* ===== ГЛОБУС ===== */
-require(["esri/Map", "esri/views/SceneView", "esri/Graphic", "esri/layers/GraphicsLayer"],
-function (Map, SceneView, Graphic, GraphicsLayer) {
-  const layer = new GraphicsLayer();   // слой с маркерами
+require(["esri/Map", "esri/views/SceneView", "esri/Graphic", "esri/layers/GraphicsLayer",
+         "esri/layers/WebTileLayer", "esri/Basemap"],
+function (Map, SceneView, Graphic, GraphicsLayer, WebTileLayer, Basemap) {
 
+  const layer = new GraphicsLayer();   // слой с маркерами
+const calmBase = new Basemap({
+  baseLayers: [
+    new WebTileLayer({
+      urlTemplate: "https://{subDomain}.basemaps.cartocdn.com/light_nolabels/{level}/{col}/{row}.png",
+      subDomains: ["a", "b", "c", "d"],
+      copyright: "© OpenStreetMap contributors © CARTO"
+    })
+  ]
+});
   const view = new SceneView({
     container: "viewDiv",
-    map: new Map({ basemap: "osm", layers: [layer] }),
+    map: new Map({ basemap: calmBase, layers: [layer] }),
     viewingMode: "global",
     camera: { position: { longitude: 15, latitude: 52, z: MAX_Z }, tilt: 0 },
     /* Зум работает только между MIN_Z и MAX_Z */
