@@ -40,11 +40,18 @@ html, body, #viewDiv { margin:0; height:100%; width:100%; background:#0b1f2e; }
 #tip .country { color:#9fb8c8; }
 #tip .txt { color:#fff; }
 /* Вариант 1*/
-
+#title { position:fixed; top:20px; left:24px; z-index:50; pointer-events:none; color:#fff;
+         font-family:"Segoe UI", Arial, sans-serif; text-shadow:0 1px 6px rgba(0,0,0,.6); }
+#title .t1 { font-size:26px; font-weight:700; }
+#title .t2 { font-size:14px; opacity:.85; margin-top:2px; }
 </style>
 </head>
 <body>
 <div id="viewDiv"></div>
+       <div id="title">
+  <div class="t1">Four peatland sites</div>
+  <div class="t2">Hover over a photo to see the site</div>
+</div>
 <!-- ИСПРАВЛЕНО: добавлена строка country -->
 <div id="tip"><img alt=""><div class="plaque"><div class="country"></div><div class="txt"></div></div></div>
 
@@ -59,10 +66,10 @@ const MAX_Z = 6500000; // самое далёкое положение (как �
 const MIN_Z = 2200000; // самое близкое: Европа примерно в 3 раза крупнее. Меньше число — ближе
 
 const PLACES = [
-  { name: "REEDS4ALL in Rhine-IJssel Delta (Netherlands)", lon: 5.92,  lat: 52.56, dx:  45, img: "NL.png", url: "https://example.com/story" },
-  { name: "Peat extraction site in Sonkajärvi (Finland)",  lon: 27.52, lat: 63.67, dx:   0, img: "FI.png", url: "https://example.com/story" },
-  { name: "Kuwasy pilot site in Biebrza (Poland)",         lon: 22.73, lat: 53.46, dx:   0, img: "PL.png", url: "https://example.com/story" },
-  { name: "Great Fen (United Kingdom)",                    lon: -0.23, lat: 52.43, dx: -45, img: "UK.png", url: "https://example.com/story" }
+  { name: "REEDS4ALL in Rhine-IJssel Delta (Netherlands)", label: "Netherlands", lon: 5.92,  lat: 52.56, dx:  45, img: "NL.png", url: "https://example.com/story" },
+  { name: "Peat extraction site in Sonkajärvi (Finland)", label: "Finland", lon: 27.52, lat: 63.67, dx:   0, img: "FI.png", url: "https://example.com/story" },
+  { name: "Kuwasy pilot site in Biebrza (Poland)",     label: "Poland",    lon: 22.73, lat: 53.46, dx:   0, img: "PL.png", url: "https://example.com/story" },
+  { name: "Great Fen (United Kingdom)",        label: "United Kingdom",            lon: -0.23, lat: 52.43, dx: -45, img: "UK.png", url: "https://example.com/story" }
 ];
 
 document.documentElement.style.setProperty("--s", SIZE + "px");
@@ -104,6 +111,7 @@ function makeSquare(src) {
 require(["esri/Map", "esri/views/SceneView", "esri/Graphic", "esri/layers/GraphicsLayer"],
 function (Map, SceneView, Graphic, GraphicsLayer) {
   const layer = new GraphicsLayer();
+const labelLayer = new GraphicsLayer();   // слой статичных подписей
 
   const view = new SceneView({
     container: "viewDiv",
@@ -126,7 +134,19 @@ function (Map, SceneView, Graphic, GraphicsLayer) {
             width: SIZE + "px", height: SIZE + "px",
             xoffset: p.dx * 0.75
           }
-        }));
+        })); labelLayer.add(new Graphic({
+  geometry: { type: "point", longitude: p.lon, latitude: p.lat },
+  symbol: {
+    type: "text",
+    text: p.label,
+    color: "white",
+    haloColor: [11, 31, 46, 0.9],     // тёмная обводка для читаемости
+    haloSize: "2px",
+    font: { size: 13, weight: "bold", family: "Arial" },
+    yoffset: -(SIZE / 2 + 12) * 0.75, // ниже фото
+    xoffset: p.dx * 0.75              // тот же сдвиг, что и у фото
+  }
+}));
       });
     });
 
