@@ -7,46 +7,75 @@
 <link rel="stylesheet" href="https://js.arcgis.com/4.31/esri/themes/dark/main.css">
 <script src="https://js.arcgis.com/4.31/"></script>
 <style>
+  :root { --s:128px; --pw:360px; }
   html, body, #viewDiv { margin:0; height:100%; width:100%; background:#0b1f2e; }
-  #tip { position:fixed; display:none; pointer-events:none; z-index:99;
-         align-items:center; transform:translate(calc(var(--s) / -2), -50%); }
-  #tip img { width:var(--s); height:var(--s); display:block; position:relative; z-index:2; }
-  #tip span { position:relative; z-index:1; margin-left:calc(var(--s) / -2);
-              padding:0 28px 0 calc(var(--s) / 2 + 16px);
-              height:calc(var(--s) * 0.75); display:flex; align-items:center;
-              background:rgba(25,45,58,.88); border-radius:999px;
-              color:#fff; font:700 20px/1.2 "Segoe UI", Arial, sans-serif; white-space:nowrap;
-              box-shadow:0 2px 10px rgba(0,0,0,.35); }
+
+  #tip { position:fixed; display:none; pointer-events:none; z-index:99; align-items:center;
+         transform:translate(calc(var(--s) / -2), -50%); }
+  #tip.left { flex-direction:row-reverse; transform:translate(calc(-100% + var(--s) / 2), -50%); }
+
+  #tip img { width:var(--s); height:var(--s); display:block; position:relative; z-index:2;
+             border-radius:40%; }
+
+  #tip .plaque { position:relative; z-index:1; box-sizing:border-box;
+                 width:var(--pw); height:var(--s);
+                 margin-left:calc(var(--s) / -2);
+                 padding:0 20px 0 calc(var(--s) / 2 + 16px);
+                 display:flex; align-items:center;
+                 background:#fff; border-radius:40%;
+                 box-shadow:0 2px 10px rgba(0,0,0,.35); }
+  #tip.left .plaque { margin-left:0; margin-right:calc(var(--s) / -2);
+                      padding:0 calc(var(--s) / 2 + 16px) 0 20px; }
+
+  #tip .txt { color:#000; font:700 20px/1.2 "Segoe UI", Arial, sans-serif;
+              display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical;
+              overflow:hidden; }
 </style>
 </head>
 <body>
 <div id="viewDiv"></div>
-<div id="tip"><img alt=""><span></span></div>
+<div id="tip"><img alt=""><div class="plaque"><div class="txt"></div></div></div>
 
 <script>
-const SIZE = 128;       // размер круга в пикселях
-const BORDER = 4;       // толщина белой рамки
+const SIZE = 128;      // размер квадрата, px
+const PLAQUE_W = 360;  // ширина плашки, px (должна совпадать с --pw в CSS)
+const BORDER = 4;      // толщина белой рамки, px
+const RADIUS = 0.4;    // скругление углов, доля от стороны
 
+// dx — сдвиг маркера по экрану в пикселях (вправо +), чтобы NL и UK не накладывались
 const PLACES = [
-  { name: "REEDS4ALL in Rhine-IJssel Delta (Netherlands)", lon: 5.92,  lat: 52.56, img: "NL.png", url: "https://example.com/story" },
-  { name: "Peat extraction site in Sonkajärvi (Finland)",  lon: 27.52, lat: 63.67, img: "FI.png", url: "https://example.com/story" },
-  { name: "Kuwasy pilot site in Biebrza (Poland)",         lon: 22.73, lat: 53.46, img: "PL.png", url: "https://example.com/story" },
-  { name: "Great Fen (United Kingdom)",                    lon: -0.23, lat: 52.43, img: "UK.png", url: "https://example.com/story" }
+  { name: "REEDS4ALL in Rhine-IJssel Delta (Netherlands)", lon: 5.92,  lat: 52.56, dx:  45, img: "NL.png", url: "https://example.com/story" },
+  { name: "Peat extraction site in Sonkajärvi (Finland)",  lon: 27.52, lat: 63.67, dx:   0, img: "FI.png", url: "https://example.com/story" },
+  { name: "Kuwasy pilot site in Biebrza (Poland)",         lon: 22.73, lat: 53.46, dx:   0, img: "PL.png", url: "https://example.com/story" },
+  { name: "Great Fen (United Kingdom)",                    lon: -0.23, lat: 52.43, dx: -45, img: "UK.png", url: "https://example.com/story" }
 ];
 
 document.documentElement.style.setProperty("--s", SIZE + "px");
+document.documentElement.style.setProperty("--pw", PLAQUE_W + "px");
 
-function makeCircle(src) {
+function roundRectPath(g, x, y, w, h, r) {
+  g.beginPath();
+  g.moveTo(x + r, y);
+  g.arcTo(x + w, y, x + w, y + h, r);
+  g.arcTo(x + w, y + h, x, y + h, r);
+  g.arcTo(x, y + h, x, y, r);
+  g.arcTo(x, y, x + w, y, r);
+  g.closePath();
+}
+
+function makeSquare(src) {
   return new Promise((resolve, reject) => {
     const im = new Image();
     im.onload = () => {
-      const px = SIZE * 2, c = document.createElement("canvas");
+      const px = SIZE * 2, b = BORDER * 2;
+      const c = document.createElement("canvas");
       c.width = c.height = px;
       const g = c.getContext("2d");
-      const b = BORDER * 2, r = px / 2;
-      g.beginPath(); g.arc(r, r, r - 1, 0, Math.PI * 2); g.fillStyle = "#fff"; g.fill();
+      roundRectPath(g, 0, 0, px, px, px * RADIUS);
+      g.fillStyle = "#fff"; g.fill();
       g.save();
-      g.beginPath(); g.arc(r, r, r - b, 0, Math.PI * 2); g.clip();
+      roundRectPath(g, b, b, px - 2 * b, px - 2 * b, (px - 2 * b) * RADIUS);
+      g.clip();
       const m = Math.min(im.width, im.height);
       g.drawImage(im, (im.width - m) / 2, (im.height - m) / 2, m, m, b, b, px - 2 * b, px - 2 * b);
       g.restore();
@@ -67,21 +96,25 @@ function (Map, SceneView, Graphic, GraphicsLayer) {
     camera: { position: { longitude: 15, latitude: 52, z: 6500000 }, tilt: 0 }
   });
 
-  Promise.all(PLACES.map(p => makeCircle(p.img).catch(e => { console.error(e); return null; })))
+  Promise.all(PLACES.map(p => makeSquare(p.img).catch(e => { console.error(e); return null; })))
     .then(urls => {
       PLACES.forEach((p, i) => {
         if (!urls[i]) return;
         layer.add(new Graphic({
           geometry: { type: "point", longitude: p.lon, latitude: p.lat },
-          attributes: { name: p.name, url: p.url, circle: urls[i] },
-          symbol: { type: "picture-marker", url: urls[i], width: SIZE + "px", height: SIZE + "px" }
+          attributes: { name: p.name, url: p.url, pic: urls[i], dx: p.dx },
+          symbol: {
+            type: "picture-marker", url: urls[i],
+            width: SIZE + "px", height: SIZE + "px",
+            xoffset: p.dx * 0.75
+          }
         }));
       });
     });
 
   const tip = document.getElementById("tip");
   const tipImg = tip.querySelector("img");
-  const tipText = tip.querySelector("span");
+  const tipText = tip.querySelector(".txt");
 
   async function hit(e) {
     const res = await view.hitTest(e, { include: layer });
@@ -92,10 +125,13 @@ function (Map, SceneView, Graphic, GraphicsLayer) {
     const g = await hit(e);
     view.container.style.cursor = g ? "pointer" : "default";
     if (!g) { tip.style.display = "none"; return; }
+
     const pt = view.toScreen(g.geometry);
-    tipImg.src = g.attributes.circle;
+    const x = pt.x + g.attributes.dx;
+    tipImg.src = g.attributes.pic;
     tipText.textContent = g.attributes.name;
-    tip.style.left = pt.x + "px";
+    tip.classList.toggle("left", x + PLAQUE_W > window.innerWidth - 8);
+    tip.style.left = x + "px";
     tip.style.top = pt.y + "px";
     tip.style.display = "flex";
   });
