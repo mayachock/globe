@@ -26,7 +26,8 @@ html, body, #viewDiv { margin:0; height:100%; width:100%; background:#0b1f2e; }
 #tip .country { font:700 12px/1.2 "Segoe UI", Arial, sans-serif; letter-spacing:.08em; text-transform:uppercase; }
 #tip .txt { font:600 17px/1.25 "Segoe UI", Arial, sans-serif; margin-top:4px;
             display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
-/* ===== СЮДА ВСТАВЛЯЕТСЯ БЛОК ВАРИАНТА ===== */
+
+/* Вариант 2: карточка с зазором */
 #tip .plaque { box-sizing:border-box;
                width:calc(var(--pw) - var(--s) / 2 - 10px); height:var(--s);
                margin-left:10px; padding:0 22px;
@@ -36,20 +37,24 @@ html, body, #viewDiv { margin:0; height:100%; width:100%; background:#0b1f2e; }
 #tip.left .plaque { margin-left:0; margin-right:10px; }
 #tip .country { color:#6b7a85; }
 #tip .txt { color:#111; }
-/* ===== СЮДА ВСТАВЛЯЕТСЯ БЛОК ВАРИАНТА ===== */
 </style>
 </head>
 <body>
 <div id="viewDiv"></div>
-<div id="tip"><img alt=""><div class="plaque"><div class="txt"></div></div></div>
+
+<!-- ИСПРАВЛЕНО: добавлена строка country -->
+<div id="tip"><img alt=""><div class="plaque"><div class="country"></div><div class="txt"></div></div></div>
 
 <script>
 const SIZE = 128;      // размер квадрата, px
-const PLAQUE_W = 360;  // ширина плашки, px (должна совпадать с --pw в CSS)
+const PLAQUE_W = 360;  // расстояние от центра фото до дальнего края плашки, px
 const BORDER = 4;      // толщина белой рамки, px
-const RADIUS = 0.4;    // скругление углов, доля от стороны
+const RADIUS = 0.4;    // скругление углов фото
 
-// dx — сдвиг маркера по экрану в пикселях (вправо +), чтобы NL и UK не накладывались
+/* Границы зума (высота камеры над землёй, метры) */
+const MAX_Z = 6500000; // самое далёкое положение (как раньше)
+const MIN_Z = 2200000; // самое близкое: Европа примерно в 3 раза крупнее. Меньше число — ближе
+
 const PLACES = [
   { name: "REEDS4ALL in Rhine-IJssel Delta (Netherlands)", lon: 5.92,  lat: 52.56, dx:  45, img: "NL.png", url: "https://example.com/story" },
   { name: "Peat extraction site in Sonkajärvi (Finland)",  lon: 27.52, lat: 63.67, dx:   0, img: "FI.png", url: "https://example.com/story" },
@@ -96,30 +101,15 @@ function makeSquare(src) {
 require(["esri/Map", "esri/views/SceneView", "esri/Graphic", "esri/layers/GraphicsLayer"],
 function (Map, SceneView, Graphic, GraphicsLayer) {
   const layer = new GraphicsLayer();
-/* Высота камеры, на которой глобус «заморожен» (в метрах) */
-const FIXED_Z = 6500000;
 
-const view = new SceneView({
-  container: "viewDiv",
-  map: new Map({ basemap: "osm", layers: [layer] }),
-  viewingMode: "global",
-  camera: { position: { longitude: 15, latitude: 52, z: FIXED_Z }, tilt: 0 },
-
-  /* Ограничение высоты камеры: min и max почти равны, поэтому приблизить
-     или отдалить глобус нельзя никаким способом (колесо, щипок, клавиши) */
-  constraints: { altitude: { min: FIXED_Z - 10000, max: FIXED_Z + 10000 } },
-
-  /* Отключаем зум колесом мыши. Вращение и перетаскивание остаются */
-  navigation: { actionMap: { mouseWheel: "none" } }
-});
-
-/* Отключаем зум двойным кликом */
-view.on("double-click", (e) => e.stopPropagation());
-
-/* Отключаем зум клавишами + и - (на клавиатуре и цифровом блоке) */
-view.on("key-down", (e) => {
-  if (["+", "-", "=", "_", "Add", "Subtract"].includes(e.key)) e.stopPropagation();
-});
+  const view = new SceneView({
+    container: "viewDiv",
+    map: new Map({ basemap: "osm", layers: [layer] }),
+    viewingMode: "global",
+    camera: { position: { longitude: 15, latitude: 52, z: MAX_Z }, tilt: 0 },
+    /* Зум работает, но только между MIN_Z и MAX_Z */
+    constraints: { altitude: { min: MIN_Z, max: MAX_Z } }
+  });
 
   Promise.all(PLACES.map(p => makeSquare(p.img).catch(e => { console.error(e); return null; })))
     .then(urls => {
@@ -140,7 +130,8 @@ view.on("key-down", (e) => {
   const tip = document.getElementById("tip");
   const tipImg = tip.querySelector("img");
   const tipText = tip.querySelector(".txt");
-const tipCountry = tip.querySelector(".country");
+  const tipCountry = tip.querySelector(".country");
+
   async function hit(e) {
     const res = await view.hitTest(e, { include: layer });
     return res.results.length ? res.results[0].graphic : null;
@@ -149,18 +140,20 @@ const tipCountry = tip.querySelector(".country");
   view.on("pointer-move", async (e) => {
     const g = await hit(e);
     view.container.style.cursor = g ? "pointer" : "default";
- if (!g) { tip.classList.remove("show"); return; }
+    if (!g) { tip.classList.remove("show"); return; }
 
     const pt = view.toScreen(g.geometry);
     const x = pt.x + g.attributes.dx;
     tipImg.src = g.attributes.pic;
-   const m = g.attributes.name.match(/^(.*)\s\((.*)\)$/);   // делим «Название (Страна)»
-tipText.textContent = m ? m[1] : g.attributes.name;
-tipCountry.textContent = m ? m[2] : "";
+
+    const m = g.attributes.name.match(/^(.*)\s\((.*)\)$/);   // делим «Название (Страна)»
+    tipText.textContent = m ? m[1] : g.attributes.name;
+    tipCountry.textContent = m ? m[2] : "";
+
     tip.classList.toggle("left", x + PLAQUE_W > window.innerWidth - 8);
     tip.style.left = x + "px";
     tip.style.top = pt.y + "px";
-    tip.style.display = "flex";
+    tip.classList.add("show");          // ИСПРАВЛЕНО: показываем через класс
   });
 
   view.on("pointer-leave", () => { tip.classList.remove("show"); });
