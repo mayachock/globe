@@ -42,16 +42,14 @@ html, body, #viewDiv { margin:0; height:100%; width:100%; background:#0b1f2e; }
 #tip.left .plaque { margin-left:0; margin-right:calc(var(--s) / -2);
                     padding:0 calc(var(--s) / 2 + 18px) 0 22px; }
 
-       #attr { position:fixed; right:8px; bottom:6px; z-index:50; pointer-events:none;
-        font:11px Arial, sans-serif; color:#444; background:rgba(255,255,255,.7);
-        padding:2px 6px; border-radius:4px; }
+
 </style>
 </head>
 <body>
 
 <!-- Сюда рисуется глобус -->
 <div id="viewDiv"></div>
-<div id="attr">© OpenStreetMap contributors © CARTO</div>
+
 <!-- Плашка при наведении: фото + страна + название -->
 <div id="tip"><img alt=""><div class="plaque"><div class="country"></div><div class="txt"></div></div></div>
 
