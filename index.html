@@ -9,21 +9,53 @@
 <style>
   html, body, #viewDiv { margin:0; height:100%; width:100%; background:#0b1f2e; }
   #tip { position:fixed; display:none; pointer-events:none; z-index:99;
-         background:rgba(0,0,0,.8); color:#fff; padding:6px 10px; border-radius:6px;
-         font:14px sans-serif; transform:translate(14px,-34px); }
+         align-items:center; transform:translate(calc(var(--s) / -2), -50%); }
+  #tip img { width:var(--s); height:var(--s); display:block; position:relative; z-index:2; }
+  #tip span { position:relative; z-index:1; margin-left:calc(var(--s) / -2);
+              padding:0 28px 0 calc(var(--s) / 2 + 16px);
+              height:calc(var(--s) * 0.75); display:flex; align-items:center;
+              background:rgba(25,45,58,.88); border-radius:999px;
+              color:#fff; font:700 20px/1.2 "Segoe UI", Arial, sans-serif; white-space:nowrap;
+              box-shadow:0 2px 10px rgba(0,0,0,.35); }
 </style>
 </head>
 <body>
 <div id="viewDiv"></div>
-<div id="tip"></div>
+<div id="tip"><img alt=""><span></span></div>
 
 <script>
+const SIZE = 128;       // размер круга в пикселях
+const BORDER = 4;       // толщина белой рамки
+
 const PLACES = [
   { name: "REEDS4ALL in Rhine-IJssel Delta (Netherlands)", lon: 5.92,  lat: 52.56, img: "NL.png", url: "https://example.com/story" },
   { name: "Peat extraction site in Sonkajärvi (Finland)",  lon: 27.52, lat: 63.67, img: "FI.png", url: "https://example.com/story" },
   { name: "Kuwasy pilot site in Biebrza (Poland)",         lon: 22.73, lat: 53.46, img: "PL.png", url: "https://example.com/story" },
   { name: "Great Fen (United Kingdom)",                    lon: -0.23, lat: 52.43, img: "UK.png", url: "https://example.com/story" }
 ];
+
+document.documentElement.style.setProperty("--s", SIZE + "px");
+
+function makeCircle(src) {
+  return new Promise((resolve, reject) => {
+    const im = new Image();
+    im.onload = () => {
+      const px = SIZE * 2, c = document.createElement("canvas");
+      c.width = c.height = px;
+      const g = c.getContext("2d");
+      const b = BORDER * 2, r = px / 2;
+      g.beginPath(); g.arc(r, r, r - 1, 0, Math.PI * 2); g.fillStyle = "#fff"; g.fill();
+      g.save();
+      g.beginPath(); g.arc(r, r, r - b, 0, Math.PI * 2); g.clip();
+      const m = Math.min(im.width, im.height);
+      g.drawImage(im, (im.width - m) / 2, (im.height - m) / 2, m, m, b, b, px - 2 * b, px - 2 * b);
+      g.restore();
+      resolve(c.toDataURL("image/png"));
+    };
+    im.onerror = () => reject(new Error("Не найден файл " + src));
+    im.src = src;
+  });
+}
 
 require(["esri/Map", "esri/views/SceneView", "esri/Graphic", "esri/layers/GraphicsLayer"],
 function (Map, SceneView, Graphic, GraphicsLayer) {
@@ -35,31 +67,40 @@ function (Map, SceneView, Graphic, GraphicsLayer) {
     camera: { position: { longitude: 15, latitude: 52, z: 6500000 }, tilt: 0 }
   });
 
-  PLACES.forEach(p => layer.add(new Graphic({
-    geometry: { type: "point", longitude: p.lon, latitude: p.lat },
-    attributes: { name: p.name, url: p.url },
-    symbol: { type: "picture-marker", url: p.img, width: "64px", height: "64px" }
-  })));
+  Promise.all(PLACES.map(p => makeCircle(p.img).catch(e => { console.error(e); return null; })))
+    .then(urls => {
+      PLACES.forEach((p, i) => {
+        if (!urls[i]) return;
+        layer.add(new Graphic({
+          geometry: { type: "point", longitude: p.lon, latitude: p.lat },
+          attributes: { name: p.name, url: p.url, circle: urls[i] },
+          symbol: { type: "picture-marker", url: urls[i], width: SIZE + "px", height: SIZE + "px" }
+        }));
+      });
+    });
 
   const tip = document.getElementById("tip");
+  const tipImg = tip.querySelector("img");
+  const tipText = tip.querySelector("span");
 
-  async function hit(event) {
-    const res = await view.hitTest(event, { include: layer });
+  async function hit(e) {
+    const res = await view.hitTest(e, { include: layer });
     return res.results.length ? res.results[0].graphic : null;
   }
 
   view.on("pointer-move", async (e) => {
     const g = await hit(e);
     view.container.style.cursor = g ? "pointer" : "default";
-    if (g) {
-      tip.textContent = g.attributes.name;
-      tip.style.left = e.x + "px";
-      tip.style.top = e.y + "px";
-      tip.style.display = "block";
-    } else {
-      tip.style.display = "none";
-    }
+    if (!g) { tip.style.display = "none"; return; }
+    const pt = view.toScreen(g.geometry);
+    tipImg.src = g.attributes.circle;
+    tipText.textContent = g.attributes.name;
+    tip.style.left = pt.x + "px";
+    tip.style.top = pt.y + "px";
+    tip.style.display = "flex";
   });
+
+  view.on("pointer-leave", () => { tip.style.display = "none"; });
 
   view.on("click", async (e) => {
     const g = await hit(e);
