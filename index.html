@@ -4,13 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Conservation sites</title>
+
+<!-- Стили и сам ArcGIS SDK (адблок может их блокировать) -->
 <link rel="stylesheet" href="https://js.arcgis.com/4.31/esri/themes/dark/main.css">
 <script src="https://js.arcgis.com/4.31/"></script>
+
 <style>
+/* Размеры: --s сторона фото, --pw расстояние от центра фото до края плашки, --r скругление */
 :root { --s:128px; --pw:360px; --r:51px; }
 html, body, #viewDiv { margin:0; height:100%; width:100%; background:#0b1f2e; }
 
-/* Контейнер плашки: плавно проявляется, мышь не перехватывает */
+/* Контейнер плашки при наведении: плавно проявляется, мышь не перехватывает */
 #tip { position:fixed; pointer-events:none; z-index:99; display:flex; align-items:center;
        transform:translate(calc(var(--s) / -2), -50%);
        opacity:0; visibility:hidden;
@@ -22,56 +26,61 @@ html, body, #viewDiv { margin:0; height:100%; width:100%; background:#0b1f2e; }
 #tip img { width:var(--s); height:var(--s); display:block; position:relative; z-index:2;
            border-radius:var(--r); box-shadow:0 2px 10px rgba(0,0,0,.3); }
 
-/* Две текстовые строки: страна (мелко) и название (крупнее, до 3 строк) */
-#tip .country { font:700 12px/1.2 "Segoe UI", Arial, sans-serif; letter-spacing:.08em; text-transform:uppercase; }
-#tip .txt { font:600 17px/1.25 "Segoe UI", Arial, sans-serif; margin-top:4px;
+/* Текст плашки: страна (мелко) и название (до 3 строк) */
+#tip .country { font:700 12px/1.2 "Segoe UI", Arial, sans-serif; letter-spacing:.08em; text-transform:uppercase; color:#6b7a85; }
+#tip .txt { font:600 17px/1.25 "Segoe UI", Arial, sans-serif; margin-top:4px; color:#111;
             display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
 
-/* Вариант 1*/
-#tip, #tip.left { flex-direction:column; align-items:center;
-                  transform:translate(-50%, calc(var(--s) / -2)); }
-#tip .plaque { box-sizing:border-box; width:210px; margin-top:8px;
-               padding:12px 16px; text-align:center;
-               background:#fff; border-radius:28px;
+/* Белая плашка: выезжает из-под фото (вариант 1) */
+#tip .plaque { box-sizing:border-box; position:relative; z-index:1;
+               width:var(--pw); height:var(--s);
+               margin-left:calc(var(--s) / -2);
+               padding:0 22px 0 calc(var(--s) / 2 + 18px);
+               display:flex; flex-direction:column; justify-content:center;
+               background:#fff; border-radius:var(--r);
                box-shadow:0 4px 16px rgba(0,0,0,.3); }
-#tip .country { color:#6b7a85; }
-#tip .txt { color:#111; font-size:15px; }
-/* Вариант 1*/
-#title { position:fixed; top:20px; left:24px; z-index:50; pointer-events:none; color:#fff;
-         font-family:"Segoe UI", Arial, sans-serif; text-shadow:0 1px 6px rgba(0,0,0,.6); }
-#title .t1 { font-size:26px; font-weight:700; }
-#title .t2 { font-size:14px; opacity:.85; margin-top:2px; }
+#tip.left .plaque { margin-left:0; margin-right:calc(var(--s) / -2);
+                    padding:0 calc(var(--s) / 2 + 18px) 0 22px; }
 </style>
 </head>
 <body>
+
+<!-- Сюда рисуется глобус -->
 <div id="viewDiv"></div>
-       <div id="title">
-  <div class="t1">Four peatland sites</div>
-  <div class="t2">Hover over a photo to see the site</div>
-</div>
-<!-- ИСПРАВЛЕНО: добавлена строка country -->
+
+<!-- Плашка при наведении: фото + страна + название -->
 <div id="tip"><img alt=""><div class="plaque"><div class="country"></div><div class="txt"></div></div></div>
 
 <script>
-const SIZE = 128;      // размер квадрата, px
+/* ===== НАСТРОЙКИ ===== */
+const SIZE = 128;      // сторона фото, px
 const PLAQUE_W = 360;  // расстояние от центра фото до дальнего края плашки, px
-const BORDER = 4;      // толщина белой рамки, px
-const RADIUS = 0.4;    // скругление углов фото
+const BORDER = 4;      // толщина белой рамки у фото, px
+const RADIUS = 0.4;    // скругление фото (доля от стороны)
+const GAP = 6;         // зазор между фото и подписью страны, px
+const SIDE = 30;       // запас по бокам картинки маркера под длинные подписи, px
+const VPAD = 40;       // запас сверху и снизу картинки маркера, px
 
-/* Границы зума (высота камеры над землёй, метры) */
-const MAX_Z = 6500000; // самое далёкое положение (как раньше)
-const MIN_Z = 2200000; // самое близкое: Европа примерно в 3 раза крупнее. Меньше число — ближе
+/* Границы зума: высота камеры над землёй, метры */
+const MAX_Z = 6500000; // самое далёкое положение
+const MIN_Z = 2200000; // самое близкое (меньше число = ближе)
 
+/* ===== ДАННЫЕ О МЕСТАХ =====
+   name — полное название (в плашке), label — подпись под фото,
+   dx — сдвиг по экрану в px (разводит Нидерланды и UK),
+   img — файл фото рядом с index.html, url — страница проекта */
 const PLACES = [
-  { name: "REEDS4ALL in Rhine-IJssel Delta (Netherlands)", label: "Netherlands", lon: 5.92,  lat: 52.56, dx:  45, img: "NL.png", url: "https://example.com/story" },
-  { name: "Peat extraction site in Sonkajärvi (Finland)", label: "Finland", lon: 27.52, lat: 63.67, dx:   0, img: "FI.png", url: "https://example.com/story" },
-  { name: "Kuwasy pilot site in Biebrza (Poland)",     label: "Poland",    lon: 22.73, lat: 53.46, dx:   0, img: "PL.png", url: "https://example.com/story" },
-  { name: "Great Fen (United Kingdom)",        label: "United Kingdom",            lon: -0.23, lat: 52.43, dx: -45, img: "UK.png", url: "https://example.com/story" }
+  { name: "REEDS4ALL in Rhine-IJssel Delta (Netherlands)", label: "Netherlands",    lon: 5.92,  lat: 52.56, dx:  45, img: "NL.png", url: "https://example.com/story" },
+  { name: "Peat extraction site in Sonkajärvi (Finland)",  label: "Finland",        lon: 27.52, lat: 63.67, dx:   0, img: "FI.png", url: "https://example.com/story" },
+  { name: "Kuwasy pilot site in Biebrza (Poland)",         label: "Poland",         lon: 22.73, lat: 53.46, dx:   0, img: "PL.png", url: "https://example.com/story" },
+  { name: "Great Fen (United Kingdom)",                    label: "United Kingdom", lon: -0.23, lat: 52.43, dx: -45, img: "UK.png", url: "https://example.com/story" }
 ];
 
+/* Передаём размеры из JS в CSS */
 document.documentElement.style.setProperty("--s", SIZE + "px");
 document.documentElement.style.setProperty("--pw", PLAQUE_W + "px");
 
+/* Контур скруглённого квадрата на canvas */
 function roundRectPath(g, x, y, w, h, r) {
   g.beginPath();
   g.moveTo(x + r, y);
@@ -82,10 +91,14 @@ function roundRectPath(g, x, y, w, h, r) {
   g.closePath();
 }
 
-function makeSquare(src) {
+/* Делает из файла две картинки:
+   photo — скруглённое фото с белой рамкой (для плашки при наведении);
+   marker — то же фото с подписью страны под ним (для глобуса) */
+function makeSquare(src, label) {
   return new Promise((resolve, reject) => {
     const im = new Image();
     im.onload = () => {
+      /* 1. Фото: белая рамка, скруглённые углы, обрезка по центру до квадрата */
       const px = SIZE * 2, b = BORDER * 2;
       const c = document.createElement("canvas");
       c.width = c.height = px;
@@ -98,60 +111,74 @@ function makeSquare(src) {
       const m = Math.min(im.width, im.height);
       g.drawImage(im, (im.width - m) / 2, (im.height - m) / 2, m, m, b, b, px - 2 * b, px - 2 * b);
       g.restore();
-      resolve(c.toDataURL("image/png"));
+      const photo = c.toDataURL("image/png");
+
+      /* 2. Маркер: запас сверху и снизу одинаковый, чтобы центр фото был центром маркера */
+      const W = (SIZE + 2 * SIDE) * 2, H = (SIZE + 2 * VPAD) * 2;
+      const mk = document.createElement("canvas");
+      mk.width = W; mk.height = H;
+      const k = mk.getContext("2d");
+      k.drawImage(c, SIDE * 2, VPAD * 2, px, px);
+
+      /* 3. Подпись: белая таблетка со скруглением 40% и чёрным текстом */
+      k.font = '700 26px "Segoe UI", Arial, sans-serif';
+      const tw = k.measureText(label).width;
+      const pw = Math.min(tw + 40, W - 4), ph = 52;
+      const x = (W - pw) / 2, y = (VPAD + SIZE + GAP) * 2;
+      k.save();
+      k.shadowColor = "rgba(0,0,0,.3)"; k.shadowBlur = 8; k.shadowOffsetY = 2;
+      roundRectPath(k, x, y, pw, ph, ph * 0.4);
+      k.fillStyle = "#fff"; k.fill();
+      k.restore();
+      k.fillStyle = "#111"; k.textAlign = "center"; k.textBaseline = "middle";
+      k.fillText(label, W / 2, y + ph / 2 + 1);
+
+      resolve({ photo: photo, marker: mk.toDataURL("image/png") });
     };
     im.onerror = () => reject(new Error("Не найден файл " + src));
     im.src = src;
   });
 }
 
+/* ===== ГЛОБУС ===== */
 require(["esri/Map", "esri/views/SceneView", "esri/Graphic", "esri/layers/GraphicsLayer"],
 function (Map, SceneView, Graphic, GraphicsLayer) {
-  const layer = new GraphicsLayer();
-const labelLayer = new GraphicsLayer();   // слой статичных подписей
+  const layer = new GraphicsLayer();   // слой с маркерами
 
   const view = new SceneView({
     container: "viewDiv",
     map: new Map({ basemap: "osm", layers: [layer] }),
     viewingMode: "global",
     camera: { position: { longitude: 15, latitude: 52, z: MAX_Z }, tilt: 0 },
-    /* Зум работает, но только между MIN_Z и MAX_Z */
+    /* Зум работает только между MIN_Z и MAX_Z */
     constraints: { altitude: { min: MIN_Z, max: MAX_Z } }
   });
 
-  Promise.all(PLACES.map(p => makeSquare(p.img).catch(e => { console.error(e); return null; })))
-    .then(urls => {
+  /* Создаём маркеры после того, как готовы все картинки.
+     Если файл не найден, этот маркер пропускается, остальные работают */
+  Promise.all(PLACES.map(p => makeSquare(p.img, p.label).catch(e => { console.error(e); return null; })))
+    .then(res => {
       PLACES.forEach((p, i) => {
-        if (!urls[i]) return;
+        if (!res[i]) return;
         layer.add(new Graphic({
           geometry: { type: "point", longitude: p.lon, latitude: p.lat },
-          attributes: { name: p.name, url: p.url, pic: urls[i], dx: p.dx },
+          attributes: { name: p.name, url: p.url, pic: res[i].photo, dx: p.dx },
           symbol: {
-            type: "picture-marker", url: urls[i],
-            width: SIZE + "px", height: SIZE + "px",
+            type: "picture-marker", url: res[i].marker,
+            width: (SIZE + 2 * SIDE) + "px", height: (SIZE + 2 * VPAD) + "px",
             xoffset: p.dx * 0.75
           }
-        })); labelLayer.add(new Graphic({
-  geometry: { type: "point", longitude: p.lon, latitude: p.lat },
-  symbol: {
-    type: "text",
-    text: p.label,
-    color: "white",
-    haloColor: [11, 31, 46, 0.9],     // тёмная обводка для читаемости
-    haloSize: "2px",
-    font: { size: 13, weight: "bold", family: "Arial" },
-    yoffset: -(SIZE / 2 + 12) * 0.75, // ниже фото
-    xoffset: p.dx * 0.75              // тот же сдвиг, что и у фото
-  }
-}));
+        }));
       });
     });
 
+  /* ===== ПЛАШКА ПРИ НАВЕДЕНИИ ===== */
   const tip = document.getElementById("tip");
   const tipImg = tip.querySelector("img");
   const tipText = tip.querySelector(".txt");
   const tipCountry = tip.querySelector(".country");
 
+  /* Какой маркер под курсором (или null) */
   async function hit(e) {
     const res = await view.hitTest(e, { include: layer });
     return res.results.length ? res.results[0].graphic : null;
@@ -166,18 +193,21 @@ const labelLayer = new GraphicsLayer();   // слой статичных под�
     const x = pt.x + g.attributes.dx;
     tipImg.src = g.attributes.pic;
 
-    const m = g.attributes.name.match(/^(.*)\s\((.*)\)$/);   // делим «Название (Страна)»
+    /* Делим «Название (Страна)» на две строки */
+    const m = g.attributes.name.match(/^(.*)\s\((.*)\)$/);
     tipText.textContent = m ? m[1] : g.attributes.name;
     tipCountry.textContent = m ? m[2] : "";
 
+    /* Не хватает места справа: плашка раскрывается влево */
     tip.classList.toggle("left", x + PLAQUE_W > window.innerWidth - 8);
     tip.style.left = x + "px";
     tip.style.top = pt.y + "px";
-    tip.classList.add("show");          // ИСПРАВЛЕНО: показываем через класс
+    tip.classList.add("show");
   });
 
   view.on("pointer-leave", () => { tip.classList.remove("show"); });
 
+  /* Клик: переход на страницу проекта */
   view.on("click", async (e) => {
     const g = await hit(e);
     if (g) window.location.href = g.attributes.url;
