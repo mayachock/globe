@@ -63,19 +63,17 @@ function roundRectPath(g, x, y, w, h, r) {
   g.closePath();
 }
 
-function makeSquare(src) {
+function makeCircle(src) {
   return new Promise((resolve, reject) => {
     const im = new Image();
     im.onload = () => {
-      const px = SIZE * 2, b = BORDER * 2;
-      const c = document.createElement("canvas");
+      const px = SIZE * 2, c = document.createElement("canvas");
       c.width = c.height = px;
       const g = c.getContext("2d");
-      roundRectPath(g, 0, 0, px, px, px * RADIUS);
-      g.fillStyle = "#fff"; g.fill();
+      const b = BORDER * 2, r = px / 2;
+      g.beginPath(); g.arc(r, r, r - 1, 0, Math.PI * 2); g.fillStyle = "#fff"; g.fill();
       g.save();
-      roundRectPath(g, b, b, px - 2 * b, px - 2 * b, (px - 2 * b) * RADIUS);
-      g.clip();
+      g.beginPath(); g.arc(r, r, r - b, 0, Math.PI * 2); g.clip();
       const m = Math.min(im.width, im.height);
       g.drawImage(im, (im.width - m) / 2, (im.height - m) / 2, m, m, b, b, px - 2 * b, px - 2 * b);
       g.restore();
@@ -85,6 +83,7 @@ function makeSquare(src) {
     im.src = src;
   });
 }
+
 
 require(["esri/Map", "esri/views/SceneView", "esri/Graphic", "esri/layers/GraphicsLayer"],
 function (Map, SceneView, Graphic, GraphicsLayer) {
