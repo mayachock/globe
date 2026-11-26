@@ -7,29 +7,38 @@
 <link rel="stylesheet" href="https://js.arcgis.com/4.31/esri/themes/dark/main.css">
 <script src="https://js.arcgis.com/4.31/"></script>
 <style>
-  :root { --s:128px; --pw:360px; }
-  html, body, #viewDiv { margin:0; height:100%; width:100%; background:#0b1f2e; }
+:root { --s:128px; --pw:360px; --r:51px; }
+html, body, #viewDiv { margin:0; height:100%; width:100%; background:#0b1f2e; }
 
-  #tip { position:fixed; display:none; pointer-events:none; z-index:99; align-items:center;
-         transform:translate(calc(var(--s) / -2), -50%); }
-  #tip.left { flex-direction:row-reverse; transform:translate(calc(-100% + var(--s) / 2), -50%); }
+/* Контейнер плашки: плавно проявляется, мышь не перехватывает */
+#tip { position:fixed; pointer-events:none; z-index:99; display:flex; align-items:center;
+       transform:translate(calc(var(--s) / -2), -50%);
+       opacity:0; visibility:hidden;
+       transition:opacity .2s ease, visibility 0s linear .2s; }
+#tip.show { opacity:1; visibility:visible; transition:opacity .2s ease, visibility 0s; }
+#tip.left { flex-direction:row-reverse; transform:translate(calc(-100% + var(--s) / 2), -50%); }
 
-  #tip img { width:var(--s); height:var(--s); display:block; position:relative; z-index:2;
-             border-radius:40%; }
+/* Фото внутри плашки */
+#tip img { width:var(--s); height:var(--s); display:block; position:relative; z-index:2;
+           border-radius:var(--r); box-shadow:0 2px 10px rgba(0,0,0,.3); }
 
-  #tip .plaque { position:relative; z-index:1; box-sizing:border-box;
-                 width:var(--pw); height:var(--s);
-                 margin-left:calc(var(--s) / -2);
-                 padding:0 20px 0 calc(var(--s) / 2 + 16px);
-                 display:flex; align-items:center;
-                 background:#fff; border-radius:40%;
-                 box-shadow:0 2px 10px rgba(0,0,0,.35); }
-  #tip.left .plaque { margin-left:0; margin-right:calc(var(--s) / -2);
-                      padding:0 calc(var(--s) / 2 + 16px) 0 20px; }
-
-  #tip .txt { color:#000; font:700 20px/1.2 "Segoe UI", Arial, sans-serif;
-              display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical;
-              overflow:hidden; }
+/* Две текстовые строки: страна (мелко) и название (крупнее, до 3 строк) */
+#tip .country { font:700 12px/1.2 "Segoe UI", Arial, sans-serif; letter-spacing:.08em; text-transform:uppercase; }
+#tip .txt { font:600 17px/1.25 "Segoe UI", Arial, sans-serif; margin-top:4px;
+            display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
+/* ===== СЮДА ВСТАВЛЯЕТСЯ БЛОК ВАРИАНТА ===== */
+  #tip .plaque { box-sizing:border-box; position:relative; z-index:1;
+               width:var(--pw); height:var(--s);
+               margin-left:calc(var(--s) / -2);
+               padding:0 22px 0 calc(var(--s) / 2 + 18px);
+               display:flex; flex-direction:column; justify-content:center;
+               background:#fff; border-radius:var(--r);
+               box-shadow:0 4px 16px rgba(0,0,0,.3); }
+#tip.left .plaque { margin-left:0; margin-right:calc(var(--s) / -2);
+                    padding:0 calc(var(--s) / 2 + 18px) 0 22px; }
+#tip .country { color:#6b7a85; }
+#tip .txt { color:#111; }
+/* ===== СЮДА ВСТАВЛЯЕТСЯ БЛОК ВАРИАНТА ===== */
 </style>
 </head>
 <body>
@@ -63,17 +72,19 @@ function roundRectPath(g, x, y, w, h, r) {
   g.closePath();
 }
 
-function makeCircle(src) {
+function makeSquare(src) {
   return new Promise((resolve, reject) => {
     const im = new Image();
     im.onload = () => {
-      const px = SIZE * 2, c = document.createElement("canvas");
+      const px = SIZE * 2, b = BORDER * 2;
+      const c = document.createElement("canvas");
       c.width = c.height = px;
       const g = c.getContext("2d");
-      const b = BORDER * 2, r = px / 2;
-      g.beginPath(); g.arc(r, r, r - 1, 0, Math.PI * 2); g.fillStyle = "#fff"; g.fill();
+      roundRectPath(g, 0, 0, px, px, px * RADIUS);
+      g.fillStyle = "#fff"; g.fill();
       g.save();
-      g.beginPath(); g.arc(r, r, r - b, 0, Math.PI * 2); g.clip();
+      roundRectPath(g, b, b, px - 2 * b, px - 2 * b, (px - 2 * b) * RADIUS);
+      g.clip();
       const m = Math.min(im.width, im.height);
       g.drawImage(im, (im.width - m) / 2, (im.height - m) / 2, m, m, b, b, px - 2 * b, px - 2 * b);
       g.restore();
@@ -84,16 +95,33 @@ function makeCircle(src) {
   });
 }
 
-
 require(["esri/Map", "esri/views/SceneView", "esri/Graphic", "esri/layers/GraphicsLayer"],
 function (Map, SceneView, Graphic, GraphicsLayer) {
   const layer = new GraphicsLayer();
-  const view = new SceneView({
-    container: "viewDiv",
-    map: new Map({ basemap: "osm", layers: [layer] }),
-    viewingMode: "global",
-    camera: { position: { longitude: 15, latitude: 52, z: 6500000 }, tilt: 0 }
-  });
+/* Высота камеры, на которой глобус «заморожен» (в метрах) */
+const FIXED_Z = 6500000;
+
+const view = new SceneView({
+  container: "viewDiv",
+  map: new Map({ basemap: "osm", layers: [layer] }),
+  viewingMode: "global",
+  camera: { position: { longitude: 15, latitude: 52, z: FIXED_Z }, tilt: 0 },
+
+  /* Ограничение высоты камеры: min и max почти равны, поэтому приблизить
+     или отдалить глобус нельзя никаким способом (колесо, щипок, клавиши) */
+  constraints: { altitude: { min: FIXED_Z - 10000, max: FIXED_Z + 10000 } },
+
+  /* Отключаем зум колесом мыши. Вращение и перетаскивание остаются */
+  navigation: { actionMap: { mouseWheel: "none" } }
+});
+
+/* Отключаем зум двойным кликом */
+view.on("double-click", (e) => e.stopPropagation());
+
+/* Отключаем зум клавишами + и - (на клавиатуре и цифровом блоке) */
+view.on("key-down", (e) => {
+  if (["+", "-", "=", "_", "Add", "Subtract"].includes(e.key)) e.stopPropagation();
+});
 
   Promise.all(PLACES.map(p => makeSquare(p.img).catch(e => { console.error(e); return null; })))
     .then(urls => {
@@ -114,7 +142,7 @@ function (Map, SceneView, Graphic, GraphicsLayer) {
   const tip = document.getElementById("tip");
   const tipImg = tip.querySelector("img");
   const tipText = tip.querySelector(".txt");
-
+const tipCountry = tip.querySelector(".country");
   async function hit(e) {
     const res = await view.hitTest(e, { include: layer });
     return res.results.length ? res.results[0].graphic : null;
@@ -123,19 +151,21 @@ function (Map, SceneView, Graphic, GraphicsLayer) {
   view.on("pointer-move", async (e) => {
     const g = await hit(e);
     view.container.style.cursor = g ? "pointer" : "default";
-    if (!g) { tip.style.display = "none"; return; }
+ if (!g) { tip.classList.remove("show"); return; }
 
     const pt = view.toScreen(g.geometry);
     const x = pt.x + g.attributes.dx;
     tipImg.src = g.attributes.pic;
-    tipText.textContent = g.attributes.name;
+   const m = g.attributes.name.match(/^(.*)\s\((.*)\)$/);   // делим «Название (Страна)»
+tipText.textContent = m ? m[1] : g.attributes.name;
+tipCountry.textContent = m ? m[2] : "";
     tip.classList.toggle("left", x + PLAQUE_W > window.innerWidth - 8);
     tip.style.left = x + "px";
     tip.style.top = pt.y + "px";
     tip.style.display = "flex";
   });
 
-  view.on("pointer-leave", () => { tip.style.display = "none"; });
+  view.on("pointer-leave", () => { tip.classList.remove("show"); });
 
   view.on("click", async (e) => {
     const g = await hit(e);
